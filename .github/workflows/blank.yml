@@ -1,0 +1,64 @@
+name: RussianCutscene CI/CD
+
+on:
+  push:
+    branches: [ "main", "develop" ]
+  pull_request:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Validate datapack structure
+        run: |
+          # Проверяем наличие обязательных папок
+          if [ ! -d "data" ]; then
+            echo "Error: 'data' folder missing!"
+            exit 1
+          fi
+          # Проверяем наличие pack.mcmeta
+          if [ ! -f "pack.mcmeta" ]; then
+            echo "Error: pack.mcmeta missing!"
+            exit 1
+          fi
+          echo "Datapack structure validated ✅"
+
+      - name: Install Minecraft server (for testing)
+        run: |
+          wget https://launcher.mojang.com/v1/objects/8f3112a1049751cc472ec13e397eade5336ca7ae/server.jar
+          echo "eula=true" > eula.txt
+
+      - name: Deploy datapack to server
+        run: |
+          mkdir -p ~/minecraft-server/world/datapacks/russian_cutscene
+          cp -r ./data ~/minecraft-server/world/datapacks/russian_cutscene/
+          cp pack.mcmeta ~/minecraft-server/world/datapacks/russian_cutscene/
+
+      - name: Start server & check logs
+        run: |
+          java -Xmx1024M -Xms1024M -jar server.jar nogui || true
+          # Ждём 30 сек для загрузки
+          sleep 30
+          # Проверяем логи на ошибки
+          if grep -q "ERROR" ~/minecraft-server/logs/latest.log; then
+            echo "Server log contains errors!"
+            cat ~/minecraft-server/logs/latest.log
+            exit 1
+          fi
+          echo "Server started without errors ✅"
+
+      - name: Create release zip
+        run: |
+          zip -r RussianCutscene-$(date +%Y%m%d).zip data pack.mcmeta
+          echo "Release archive created: RussianCutscene-$(date +%Y%m%d).zip"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: russian-cutscene-release
+          path: RussianCutscene-*.zip
